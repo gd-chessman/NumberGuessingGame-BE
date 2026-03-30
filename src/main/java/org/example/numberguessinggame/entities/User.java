@@ -39,10 +39,6 @@ public class User {
     @Column(nullable = false)
     private int turns = 0;
 
-    /** Current round secret (1–5); {@code null} if no round started (call start-round first). */
-    @Column(name = "current_secret")
-    private Integer currentSecret;
-
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

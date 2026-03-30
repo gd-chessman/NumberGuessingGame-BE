@@ -5,8 +5,6 @@ import java.util.List;
 import org.example.numberguessinggame.dtos.GuessRequest;
 import org.example.numberguessinggame.dtos.GuessResponse;
 import org.example.numberguessinggame.dtos.LeaderboardEntryDto;
-import org.example.numberguessinggame.dtos.RoundStatusResponse;
-import org.example.numberguessinggame.dtos.StartRoundResponse;
 import org.example.numberguessinggame.entities.User;
 import org.example.numberguessinggame.repositories.UserRepository;
 import org.example.numberguessinggame.services.GameService;
@@ -31,13 +29,6 @@ public class GameController {
         this.userRepository = userRepository;
     }
 
-    /** Starts a new round: server picks a random 1–5 (stored server-side, not returned). */
-    @PostMapping("/start-round")
-    public StartRoundResponse startRound(Authentication authentication) {
-        User user = requireUser(authentication);
-        return gameService.startRound(user);
-    }
-
     @PostMapping("/guess")
     public GuessResponse guess(Authentication authentication, @Valid @RequestBody GuessRequest request) {
         User user = requireUser(authentication);
@@ -50,13 +41,6 @@ public class GameController {
     //     User user = requireUser(authentication);
     //     return gameService.buyTurns(user);
     // }
-
-    /** Whether the current user has an active round (must call start-round before guessing). */
-    @GetMapping("/round-status")
-    public RoundStatusResponse roundStatus(Authentication authentication) {
-        User user = requireUser(authentication);
-        return gameService.roundStatus(user);
-    }
 
     @GetMapping("/leaderboard")
     public List<LeaderboardEntryDto> leaderboard() {

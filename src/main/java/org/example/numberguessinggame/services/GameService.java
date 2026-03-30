@@ -7,8 +7,6 @@ import org.example.numberguessinggame.dtos.BuyTurnsResponse;
 import org.example.numberguessinggame.dtos.GuessRequest;
 import org.example.numberguessinggame.dtos.GuessResponse;
 import org.example.numberguessinggame.dtos.LeaderboardEntryDto;
-import org.example.numberguessinggame.dtos.RoundStatusResponse;
-import org.example.numberguessinggame.dtos.StartRoundResponse;
 import org.example.numberguessinggame.entities.GuessLog;
 import org.example.numberguessinggame.entities.TurnTransaction;
 import org.example.numberguessinggame.entities.TurnTransactionType;
@@ -42,50 +40,37 @@ public class GameService {
     }
 
     @Transactional
-    public StartRoundResponse startRound(User user) {
-        int secret = randomSecret();
-        user.setCurrentSecret(secret);
-        userRepository.save(user);
-        return new StartRoundResponse(true, "New round started. Guess a number from 1 to 5.");
-    }
-
-    @Transactional
     public GuessResponse guess(User user, GuessRequest request) {
-        if (user.getCurrentSecret() == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST, "No active round. Call start-round before guessing.");
-        }
-        if (user.getTurns() <= 0) {
+        int guessed = request.getNumber();
+        int secret = randomSecret();
+        // Keep secret range 1..5, but require an additional acceptance gate so that
+        // win rate is ~5% per guess:
+        // P(win) = P(guessed == secret) * P(accept) = 1/5 * 1/4 = 5%.
+        boolean secretMatched = guessed == secret;
+        boolean correct = secretMatched && ThreadLocalRandom.current().nextInt(4) == 0;
+        int delta = correct ? 1 : 0;
+
+        // Atomically decrement turns (only when turns > 0) and increment score when correct.
+        int updated = userRepository.decrementTurnsAndUpdateScore(user.getId(), delta);
+        if (updated == 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No turns left. Buy more turns.");
         }
 
-        int guessed = request.getNumber();
-        int secret = user.getCurrentSecret();
-
-        user.setTurns(user.getTurns() - 1);
-
-        boolean correct = guessed == secret;
+        // Reload the user to build an accurate response (turnsRemaining/score).
+        User fresh = userRepository
+                .findById(user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         GuessLog log = new GuessLog();
-        log.setUser(user);
+        log.setUser(fresh);
         log.setGuessedNumber(guessed);
         log.setCorrect(correct);
         guessLogRepository.save(log);
 
-        if (correct) {
-            user.setScore(user.getScore() + 1);
-            user.setCurrentSecret(null);
-        }
-
-        userRepository.save(user);
-
-        boolean roundActive = user.getCurrentSecret() != null;
         String message =
-                correct
-                        ? "Correct! +1 point. Start a new round when ready."
-                        : "Wrong guess. Keep trying if you have turns left.";
+                correct ? "Correct! +1 point." : "Wrong guess. Keep trying if you have turns left.";
 
-        return new GuessResponse(correct, user.getTurns(), user.getScore(), roundActive, message);
+        return new GuessResponse(correct, fresh.getTurns(), fresh.getScore(), message);
     }
 
     @Transactional
@@ -116,15 +101,6 @@ public class GameService {
         tx.setType(TurnTransactionType.VNPAY);
         tx.setAmount(turns);
         turnTransactionRepository.save(tx);
-    }
-
-    @Transactional(readOnly = true)
-    public RoundStatusResponse roundStatus(User user) {
-        User fresh = userRepository
-                .findById(user.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-        boolean roundActive = fresh.getCurrentSecret() != null;
-        return new RoundStatusResponse(roundActive, fresh.getTurns(), fresh.getScore());
     }
 
     @Transactional(readOnly = true)
