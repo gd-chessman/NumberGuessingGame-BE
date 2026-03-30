@@ -97,12 +97,10 @@ public class AuthController {
         }
 
         ResponseCookie accessCookie = buildAccessCookie(jwtService.generateAccessToken(userDetails));
-        ResponseCookie newRefreshCookie = buildRefreshCookie(jwtService.generateRefreshToken(userDetails));
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, accessCookie.toString())
-                .header(HttpHeaders.SET_COOKIE, newRefreshCookie.toString())
-                .body(new AuthResponse(username, "Token refreshed"));
+                .body(new AuthResponse(username, "Access token refreshed"));
     }
 
     @PostMapping("/logout")
