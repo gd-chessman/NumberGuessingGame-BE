@@ -1,0 +1,101 @@
+# Database design (aligned with JPA entities)
+
+## 1. users
+
+Stores accounts and in-game state (score, turns, current round secret).
+
+```sql
+users (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  password VARCHAR(255) NOT NULL,
+
+  score INT NOT NULL DEFAULT 0,
+  turns INT NOT NULL DEFAULT 0,
+
+  current_secret INT NULL,  -- secret number 1–5 for active round; NULL if no round
+
+  created_at TIMESTAMP(6) NOT NULL,
+
+  INDEX idx_users_username (username)
+)
+```
+
+---
+
+## 2. guess_logs
+
+History of guesses per user.
+
+```sql
+guess_logs (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+
+  guessed_number INT,
+  correct BOOLEAN,
+
+  created_at TIMESTAMP(6) NOT NULL,
+
+  FOREIGN KEY (user_id) REFERENCES users(id)
+)
+```
+
+---
+
+## 3. turn_transactions
+
+Audit log when turns are added (demo buy, admin, or VNPay fulfillment).
+
+```sql
+turn_transactions (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+
+  type VARCHAR(50),  -- enum: BUY | ADMIN_GRANT | VNPAY
+  amount INT NOT NULL,
+
+  created_at TIMESTAMP(6) NOT NULL,
+
+  FOREIGN KEY (user_id) REFERENCES users(id)
+)
+```
+
+---
+
+## 4. vnpay_payments
+
+One row per VNPay checkout attempt (`txn_ref` matches `vnp_TxnRef`).
+
+```sql
+vnpay_payments (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  user_id BIGINT NOT NULL,
+
+  txn_ref VARCHAR(100) UNIQUE NOT NULL,
+
+  amount_vnd BIGINT NOT NULL,      -- VND (not ×100; gateway uses ×100 separately)
+  turns_to_grant INT NOT NULL,
+
+  status VARCHAR(20) NOT NULL,     -- enum: PENDING | SUCCESS | FAILED
+  response_code VARCHAR(10),       -- e.g. VNPay response / AMOUNT_MISMATCH
+  transaction_no VARCHAR(32),
+  bank_code VARCHAR(20),
+
+  created_at TIMESTAMP(6) NOT NULL,
+  updated_at TIMESTAMP(6) NOT NULL,
+
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  INDEX idx_vnpay_payments_txn_ref (txn_ref)
+)
+```
+
+---
+
+## Relationships
+
+* `users (1) → (n) guess_logs`
+* `users (1) → (n) turn_transactions`
+* `users (1) → (n) vnpay_payments`
+
+Successful VNPay flow: row in `vnpay_payments` moves to `SUCCESS` and a matching `turn_transactions` row with `type = VNPAY` records granted turns.
